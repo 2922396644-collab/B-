@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+hook_debug/
+hook_debug_temp/
+progress_smoke/

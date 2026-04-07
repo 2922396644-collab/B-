@@ -1,0 +1,7 @@
+**/__pycache__/
+*.pyc
+Thumbs.db
+.DS_Store
+hook_debug/
+hook_debug_temp/
+progress_smoke/
