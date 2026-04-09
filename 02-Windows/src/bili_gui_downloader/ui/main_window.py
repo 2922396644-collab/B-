@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QScrollArea,
     QSpinBox,
+    QSizePolicy,
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -461,25 +462,32 @@ class MainWindow(QMainWindow):
 
     def _build_empty_placeholder(self, title: str, subtitle: str) -> QWidget:
         widget = QWidget()
+        widget.setObjectName("EmptyState")
         layout = QVBoxLayout(widget)
-        layout.setContentsMargins(24, 28, 24, 28)
-        layout.setSpacing(10)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
         layout.setAlignment(Qt.AlignCenter)
 
-        icon_label = QLabel("⬇")
+        icon_label = QLabel("↓")
         icon_label.setObjectName("EmptyIcon")
         icon_label.setAlignment(Qt.AlignCenter)
-        icon_label.setFixedSize(82, 82)
+        icon_font = QFont("Segoe UI Symbol", 28)
+        icon_font.setBold(True)
+        icon_label.setFont(icon_font)
+        icon_label.setFixedSize(72, 72)
 
         title_label = QLabel(title)
         title_label.setObjectName("EmptyTitle")
         title_label.setAlignment(Qt.AlignCenter)
+        title_label.setWordWrap(True)
+        title_label.setMaximumWidth(560)
 
         subtitle_label = QLabel(subtitle)
         subtitle_label.setObjectName("EmptySubtitle")
         subtitle_label.setAlignment(Qt.AlignCenter)
         subtitle_label.setWordWrap(True)
-        subtitle_label.setMaximumWidth(420)
+        subtitle_label.setFixedWidth(520)
+        subtitle_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
 
         layout.addWidget(icon_label)
         layout.addWidget(title_label)
@@ -2231,22 +2239,26 @@ def _build_stylesheet(colors: dict[str, str]) -> str:
         color: {disabled_text};
         border-color: {disabled_bg};
     }}
+    QWidget#EmptyState {{
+        background: transparent;
+    }}
     QLabel#EmptyIcon {{
         background: {empty_bg};
-        color: {empty_text};
+        color: {primary};
         border: 1px solid {empty_border};
-        border-radius: 41px;
-        font-size: 34px;
+        border-radius: 36px;
+        font-size: 30px;
         font-weight: 800;
     }}
     QLabel#EmptyTitle {{
-        font-size: 18px;
+        font-size: 16px;
         font-weight: 800;
         color: {text_heading};
     }}
     QLabel#EmptySubtitle {{
         font-size: 13px;
         color: {text_secondary};
+        padding: 0 6px;
     }}
     QTableWidget#DataTable {{
         background: {table_bg};
