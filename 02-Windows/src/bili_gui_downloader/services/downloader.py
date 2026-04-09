@@ -69,6 +69,7 @@ class BiliDownloader:
         try:
             with YoutubeDL(self._build_extract_options()) as ydl:
                 info = ydl.extract_info(url, download=False)
+
             component_estimated_bytes = _extract_component_sizes(info)
             return VideoMetadata(
                 task_id=task_id,
@@ -136,6 +137,7 @@ class BiliDownloader:
                         summary.failed_count += 1
                 except Exception:
                     summary.failed_count += 1
+
         return summary
 
     def _download_single(
@@ -176,6 +178,7 @@ class BiliDownloader:
         try:
             with YoutubeDL(self._build_download_options(output_dir, progress_hook)) as ydl:
                 ydl.extract_info(item.normalized_url, download=True)
+
             total_downloaded = _get_completed_bytes(download_state)
             total_estimated = _get_total_estimated(download_state)
             self._emit_item(
@@ -197,7 +200,10 @@ class BiliDownloader:
                 status="已停止",
                 detail="用户手动停止了任务",
                 progress=_get_progress_percent(download_state),
-                downloaded_text=_format_progress_bytes(_get_overall_downloaded(download_state), _get_total_estimated(download_state)),
+                downloaded_text=_format_progress_bytes(
+                    _get_overall_downloaded(download_state),
+                    _get_total_estimated(download_state),
+                ),
                 speed_text="",
                 speed_bps=0.0,
                 eta_text="",
@@ -211,19 +217,26 @@ class BiliDownloader:
                     status="已停止",
                     detail="用户手动停止了任务",
                     progress=_get_progress_percent(download_state),
-                    downloaded_text=_format_progress_bytes(_get_overall_downloaded(download_state), _get_total_estimated(download_state)),
+                    downloaded_text=_format_progress_bytes(
+                        _get_overall_downloaded(download_state),
+                        _get_total_estimated(download_state),
+                    ),
                     speed_text="",
                     speed_bps=0.0,
                     eta_text="",
                 )
                 return "stopped"
+
             self._emit_item(
                 item_callback,
                 item.task_id,
                 status="失败",
                 detail=_friendly_error(exc),
                 progress=_get_progress_percent(download_state),
-                downloaded_text=_format_progress_bytes(_get_overall_downloaded(download_state), _get_total_estimated(download_state)),
+                downloaded_text=_format_progress_bytes(
+                    _get_overall_downloaded(download_state),
+                    _get_total_estimated(download_state),
+                ),
                 speed_text="",
                 speed_bps=0.0,
                 eta_text="",
@@ -237,19 +250,26 @@ class BiliDownloader:
                     status="已停止",
                     detail="用户手动停止了任务",
                     progress=_get_progress_percent(download_state),
-                    downloaded_text=_format_progress_bytes(_get_overall_downloaded(download_state), _get_total_estimated(download_state)),
+                    downloaded_text=_format_progress_bytes(
+                        _get_overall_downloaded(download_state),
+                        _get_total_estimated(download_state),
+                    ),
                     speed_text="",
                     speed_bps=0.0,
                     eta_text="",
                 )
                 return "stopped"
+
             self._emit_item(
                 item_callback,
                 item.task_id,
                 status="失败",
                 detail=_friendly_error(exc),
                 progress=_get_progress_percent(download_state),
-                downloaded_text=_format_progress_bytes(_get_overall_downloaded(download_state), _get_total_estimated(download_state)),
+                downloaded_text=_format_progress_bytes(
+                    _get_overall_downloaded(download_state),
+                    _get_total_estimated(download_state),
+                ),
                 speed_text="",
                 speed_bps=0.0,
                 eta_text="",
@@ -298,8 +318,12 @@ class BiliDownloader:
                     item_callback,
                     task_id,
                     status="合并音视频" if is_merging else "下载中",
-                    progress=max(99.0, _get_progress_percent(download_state)) if is_merging else _get_progress_percent(download_state),
-                    detail="所有流下载完成，正在合并音视频" if is_merging else "一个流已完成，继续下载剩余流",
+                    progress=max(99.0, _get_progress_percent(download_state))
+                    if is_merging
+                    else _get_progress_percent(download_state),
+                    detail="所有流下载完成，正在合并音视频"
+                    if is_merging
+                    else "一个流已完成，继续下载剩余流",
                     downloaded_text=_format_progress_bytes(
                         _get_completed_bytes(download_state),
                         _get_total_estimated(download_state),
@@ -389,6 +413,7 @@ def _describe_best_quality(info: dict) -> str:
             float(item.get("filesize") or item.get("filesize_approx") or 0.0),
         ),
     )
+
     parts = []
     resolution = best.get("resolution")
     if resolution:
@@ -481,14 +506,20 @@ def _mark_component_finished(download_state: dict[str, object], component_id: st
     elif component_downloaded.get(component_id):
         component_sizes[component_id] = max(component_sizes[component_id], component_downloaded[component_id])
     finished_components.add(component_id)
-    download_state["total_estimated"] = max(int(download_state["total_estimated"]), sum(component_sizes.values()))
+    download_state["total_estimated"] = max(
+        int(download_state["total_estimated"]),
+        sum(component_sizes.values()),
+    )
 
 
 def _get_completed_bytes(download_state: dict[str, object]) -> int:
     component_sizes: dict[str, int] = download_state["component_sizes"]  # type: ignore[assignment]
     component_downloaded: dict[str, int] = download_state["component_downloaded"]  # type: ignore[assignment]
     finished_components: set[str] = download_state["finished_components"]  # type: ignore[assignment]
-    return sum(max(component_sizes.get(component_id, 0), component_downloaded.get(component_id, 0)) for component_id in finished_components)
+    return sum(
+        max(component_sizes.get(component_id, 0), component_downloaded.get(component_id, 0))
+        for component_id in finished_components
+    )
 
 
 def _get_overall_downloaded(
@@ -498,6 +529,7 @@ def _get_overall_downloaded(
     completed_bytes = _get_completed_bytes(download_state)
     if not current_component_id:
         return completed_bytes
+
     component_downloaded: dict[str, int] = download_state["component_downloaded"]  # type: ignore[assignment]
     finished_components: set[str] = download_state["finished_components"]  # type: ignore[assignment]
     if current_component_id in finished_components:
@@ -519,9 +551,12 @@ def _get_progress_percent(
     total_estimated = _get_total_estimated(download_state)
     if total_estimated <= 0:
         return 0.0
+
     calculated = min(
         100.0,
-        _get_overall_downloaded(download_state, current_component_id=current_component_id) / total_estimated * 100.0,
+        _get_overall_downloaded(download_state, current_component_id=current_component_id)
+        / total_estimated
+        * 100.0,
     )
     last_progress = float(download_state.get("last_progress") or 0.0)
     final_progress = max(last_progress, calculated)

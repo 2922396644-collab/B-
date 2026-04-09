@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 
-APP_NAME = "B站高码流视频下载器"
+APP_NAME = "B站高码流视频下载"
 APP_DIR_NAME = "BiliHighQualityDownloader"
 
 
@@ -18,6 +18,7 @@ class AppPaths:
     temp_dir: Path
     browser_profile_dir: Path
     config_path: Path
+    history_path: Path
 
 
 @dataclass(slots=True)
@@ -26,12 +27,16 @@ class AppConfig:
     browser_preference: str = "auto"
     concurrent_downloads: int = 2
     concurrent_fragments: int = 4
+    theme_mode: str = "system"
+    theme_preference_explicit: bool = False
 
     def clamp(self) -> "AppConfig":
         self.concurrent_downloads = max(1, min(4, int(self.concurrent_downloads)))
         self.concurrent_fragments = max(1, min(8, int(self.concurrent_fragments)))
         self.browser_preference = self.browser_preference or "auto"
         self.default_download_dir = self.default_download_dir.strip()
+        if self.theme_mode not in {"light", "dark", "system"}:
+            self.theme_mode = "system"
         return self
 
 
@@ -49,6 +54,7 @@ def ensure_app_paths() -> AppPaths:
     temp_dir = data_dir / "temp"
     browser_profile_dir = data_dir / "browser_profile"
     config_path = root_dir / "config.json"
+    history_path = data_dir / "download_history.json"
 
     for path in (root_dir, data_dir, logs_dir, temp_dir, browser_profile_dir):
         path.mkdir(parents=True, exist_ok=True)
@@ -60,6 +66,7 @@ def ensure_app_paths() -> AppPaths:
         temp_dir=temp_dir,
         browser_profile_dir=browser_profile_dir,
         config_path=config_path,
+        history_path=history_path,
     )
 
 
@@ -81,9 +88,16 @@ def load_config(paths: AppPaths) -> AppConfig:
         browser_preference=str(loaded.get("browser_preference", "auto")),
         concurrent_downloads=int(loaded.get("concurrent_downloads", 2)),
         concurrent_fragments=int(loaded.get("concurrent_fragments", 4)),
+        theme_mode=str(loaded.get("theme_mode", "system")),
+        theme_preference_explicit=bool(loaded.get("theme_preference_explicit", False)),
     ).clamp()
+
+    if not config.theme_preference_explicit and config.theme_mode == "light":
+        config.theme_mode = "system"
+
     if config.default_download_dir:
         config.default_download_dir = str(Path(config.default_download_dir).resolve())
+
     save_config(paths, config)
     return config
 

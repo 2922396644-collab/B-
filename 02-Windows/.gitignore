@@ -4,3 +4,7 @@ __pycache__/
 hook_debug/
 hook_debug_temp/
 progress_smoke/
+build/
+dist/
+*.spec
+vendor/
