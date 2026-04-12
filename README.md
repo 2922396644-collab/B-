@@ -4,18 +4,22 @@
 
 当前已经完成的部分：
 
+- `01-MAC`：macOS 桌面版
+  支持输入一个或多个 B 站链接、读取标题、显示预计规格、设置默认下载目录、打开独立登录浏览器、并行下载、逐视频显示下载进度、查看下载历史、查看历史统计，并可打包为 `.app`。
 - `02-Windows`：Windows GUI MVP
-  支持输入一个或多个 B 站链接、读取标题、显示预计规格、设置默认下载目录、打开独立登录浏览器、并行下载、逐视频显示下载进度。
-- `01-MAC`：后续预留
-  等 Windows 版本功能稳定、流程跑顺之后再开发。
+  支持输入一个或多个 B 站链接、读取标题、显示预计规格、设置默认下载目录、打开独立登录浏览器、并行下载、逐视频显示下载进度、查看下载历史、查看历史统计。
 
 ## 当前推荐入口
 
-直接进入 [02-Windows/README.md](/G:/09-AI编程/Codex/03-B站高码流视频下载/02-Windows/README.md) 查看 Windows 版本说明。
+按系统选择：
+
+- macOS: [01-MAC/README.md](01-MAC/README.md)
+- Windows: [02-Windows/README.md](02-Windows/README.md)
 
 运行方式：
 
-在 `02-Windows` 目录双击 `run.bat`。
+- macOS: 在 `01-MAC` 目录双击 `run.command`
+- Windows: 在 `02-Windows` 目录双击 `run.bat`
 
 ## 说明
 

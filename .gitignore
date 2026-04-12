@@ -5,3 +5,8 @@ Thumbs.db
 hook_debug/
 hook_debug_temp/
 progress_smoke/
+01-MAC/build/
+01-MAC/dist/
+01-MAC/*.spec
+02-Windows/build-fixed/
+02-Windows/dist-fixed/
