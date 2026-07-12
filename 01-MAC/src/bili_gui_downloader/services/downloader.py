@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import os
 import shutil
+import sys
 import threading
 import time
 import uuid
@@ -70,56 +71,77 @@ class BiliDownloader:
         cookie_spec = self._resolve_cookie_spec()
         max_workers = min(2 if cookie_spec else 4, max(1, len(urls)))
         self._log(f"读取任务启动：{len(urls)} 个链接，元数据并发 {max_workers}。")
-        results: dict[int, VideoMetadata] = {}
+        results: dict[int, list[VideoMetadata]] = {}
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(self._fetch_single_metadata, index, url, cookie_spec): index
                 for index, url in enumerate(urls)
             }
             for future in as_completed(futures):
-                item = future.result()
-                results[item.input_index] = item
-        return [results[index] for index in sorted(results)]
+                items = future.result()
+                results[futures[future]] = items
+
+        flattened: list[VideoMetadata] = []
+        for index in sorted(results):
+            flattened.extend(results[index])
+        for output_index, item in enumerate(flattened):
+            item.input_index = output_index
+        return flattened
 
     def _fetch_single_metadata(
         self,
         index: int,
         url: str,
         cookie_spec: tuple[str, str, None, None] | None,
-    ) -> VideoMetadata:
-        task_id = uuid.uuid4().hex
+    ) -> list[VideoMetadata]:
         try:
             with YoutubeDL(self._build_extract_options(cookie_spec)) as ydl:
                 info = ydl.extract_info(url, download=False)
 
-            component_estimated_bytes = _extract_component_sizes(info)
-            return VideoMetadata(
-                task_id=task_id,
-                input_index=index,
-                source_url=url,
-                normalized_url=info.get("webpage_url") or url,
-                title=str(info.get("title") or "未命名视频"),
-                uploader=str(info.get("uploader") or info.get("channel") or "未知作者"),
-                duration_text=_format_duration(info.get("duration")),
-                best_quality_text=_describe_best_quality(info),
-                video_id=str(info.get("id") or ""),
-                status="待下载",
-                estimated_total_bytes=sum(component_estimated_bytes.values()),
-                component_estimated_bytes=component_estimated_bytes,
-            )
+            entries = info.get("entries") or []
+            if entries:
+                items = [
+                    self._make_metadata(index, url, entry)
+                    for entry in entries
+                    if isinstance(entry, dict)
+                ]
+                if items:
+                    self._log(f"检测到合集链接，已展开 {len(items)} 个视频。")
+                    return items
+            return [self._make_metadata(index, url, info)]
         except Exception as exc:
-            return VideoMetadata(
-                task_id=task_id,
-                input_index=index,
-                source_url=url,
-                normalized_url=url,
-                title="读取失败",
-                uploader="--",
-                duration_text="--",
-                best_quality_text="--",
-                status="读取失败",
-                error_message=_friendly_error(exc),
-            )
+            return [
+                VideoMetadata(
+                    task_id=uuid.uuid4().hex,
+                    input_index=index,
+                    source_url=url,
+                    normalized_url=url,
+                    title="读取失败",
+                    uploader="--",
+                    duration_text="--",
+                    best_quality_text="--",
+                    status="读取失败",
+                    error_message=_friendly_error(exc),
+                )
+            ]
+
+    @staticmethod
+    def _make_metadata(index: int, source_url: str, info: dict) -> VideoMetadata:
+        component_estimated_bytes = _extract_component_sizes(info)
+        return VideoMetadata(
+            task_id=uuid.uuid4().hex,
+            input_index=index,
+            source_url=source_url,
+            normalized_url=info.get("webpage_url") or source_url,
+            title=str(info.get("title") or "未命名视频"),
+            uploader=str(info.get("uploader") or info.get("channel") or "未知作者"),
+            duration_text=_format_duration(info.get("duration")),
+            best_quality_text=_describe_best_quality(info),
+            video_id=str(info.get("id") or ""),
+            status="待下载",
+            estimated_total_bytes=sum(component_estimated_bytes.values()),
+            component_estimated_bytes=component_estimated_bytes,
+        )
 
     def download_batch(
         self,
@@ -390,7 +412,9 @@ class BiliDownloader:
             "ignoreconfig": True,
             "quiet": True,
             "no_warnings": True,
-            "noplaylist": True,
+            "noplaylist": False,
+            # B 站下载直连，不继承桌面环境中的 HTTP(S)_PROXY / ALL_PROXY。
+            "proxy": "",
             "skip_download": True,
             "ignoreerrors": False,
             "socket_timeout": NETWORK_SOCKET_TIMEOUT_SECONDS,
@@ -416,6 +440,8 @@ class BiliDownloader:
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
+            # 直连 B 站，避免本机代理的带宽和分片重试成为下载瓶颈。
+            "proxy": "",
             "ignoreerrors": False,
             "logger": YtDlpLogger(self.log_callback),
             "format": FORMAT_SELECTOR,
@@ -440,7 +466,9 @@ class BiliDownloader:
         }
         ffmpeg_location = resolve_ffmpeg_location()
         if ffmpeg_location is not None:
-            options["ffmpeg_location"] = str(ffmpeg_location.parent)
+            # imageio-ffmpeg 的内置文件名并不一定就叫 “ffmpeg”，必须传递完整
+            # 可执行文件路径；只传目录会让 yt-dlp 继续查找不存在的 ffmpeg 文件。
+            options["ffmpeg_location"] = str(ffmpeg_location)
         cookie_spec = build_cookies_from_browser(
             self.paths.browser_profile_dir,
             self.config.browser_preference,
@@ -499,6 +527,25 @@ def resolve_ffmpeg_location() -> Path | None:
         resolved = _normalize_ffmpeg_candidate(candidate)
         if resolved is not None:
             return resolved
+
+    # PyInstaller 将 imageio-ffmpeg 的二进制文件放到 App 的 Frameworks 目录，
+    # 这时 imageio_ffmpeg.get_ffmpeg_exe() 可能无法自行定位，需要主动查找。
+    app_contents_dir = Path(sys.executable).resolve().parent.parent
+    bundled_ffmpeg_dir = app_contents_dir / "Frameworks" / "imageio_ffmpeg" / "binaries"
+    if bundled_ffmpeg_dir.is_dir():
+        for candidate in bundled_ffmpeg_dir.glob("ffmpeg*"):
+            resolved = _normalize_ffmpeg_candidate(candidate)
+            if resolved is not None:
+                return resolved
+
+    try:
+        import imageio_ffmpeg
+
+        resolved = _normalize_ffmpeg_candidate(imageio_ffmpeg.get_ffmpeg_exe())
+        if resolved is not None:
+            return resolved
+    except Exception:
+        pass
     return None
 
 

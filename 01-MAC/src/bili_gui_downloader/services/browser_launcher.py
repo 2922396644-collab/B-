@@ -8,7 +8,7 @@ from pathlib import Path
 LOGIN_URL = "https://www.bilibili.com/"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class BrowserInstall:
     browser_id: str
     display_name: str

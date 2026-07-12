@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
-@dataclass(slots=True)
+@dataclass
 class VideoMetadata:
     task_id: str
     input_index: int
@@ -21,7 +21,7 @@ class VideoMetadata:
     component_estimated_bytes: dict[str, int] = field(default_factory=dict)
 
 
-@dataclass(slots=True)
+@dataclass
 class DownloadSummary:
     total_count: int = 0
     success_count: int = 0

@@ -10,7 +10,7 @@ from bili_gui_downloader.config import AppPaths
 MAX_HISTORY_ITEMS = 1000
 
 
-@dataclass(slots=True)
+@dataclass
 class DownloadHistoryEntry:
     recorded_at: str
     title: str

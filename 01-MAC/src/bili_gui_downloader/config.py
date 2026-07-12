@@ -9,7 +9,7 @@ APP_NAME = "B站高码流视频下载"
 APP_DIR_NAME = "BiliHighQualityDownloader"
 
 
-@dataclass(slots=True)
+@dataclass
 class AppPaths:
     root_dir: Path
     data_dir: Path
@@ -20,7 +20,7 @@ class AppPaths:
     history_path: Path
 
 
-@dataclass(slots=True)
+@dataclass
 class AppConfig:
     default_download_dir: str = ""
     browser_preference: str = "auto"
