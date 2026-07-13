@@ -31,6 +31,7 @@ DOWNLOAD_RETRIES = 8
 FRAGMENT_RETRIES = 8
 FILE_ACCESS_RETRIES = 3
 MAX_TOTAL_FRAGMENT_DOWNLOADS = 8
+ARIA2C_CONNECTIONS = 8
 PROGRESS_EMIT_INTERVAL_SECONDS = 0.25
 PROGRESS_EMIT_DELTA_PERCENT = 0.4
 PROGRESS_EMIT_DELTA_BYTES = 4 * 1024 * 1024
@@ -469,6 +470,21 @@ class BiliDownloader:
             # imageio-ffmpeg 的内置文件名并不一定就叫 “ffmpeg”，必须传递完整
             # 可执行文件路径；只传目录会让 yt-dlp 继续查找不存在的 ffmpeg 文件。
             options["ffmpeg_location"] = str(ffmpeg_location)
+        aria2c_location = resolve_aria2c_location()
+        if aria2c_location is not None:
+            options["external_downloader"] = str(aria2c_location)
+            options["external_downloader_args"] = {
+                "aria2c": [
+                    "--file-allocation=none",
+                    "--console-log-level=warn",
+                    "--summary-interval=0",
+                    "--auto-file-renaming=false",
+                    f"--max-connection-per-server={ARIA2C_CONNECTIONS}",
+                    f"--split={ARIA2C_CONNECTIONS}",
+                    "--min-split-size=1M",
+                ]
+            }
+            self._log(f"已启用 aria2c 多连接下载：单流最多 {ARIA2C_CONNECTIONS} 条连接。")
         cookie_spec = build_cookies_from_browser(
             self.paths.browser_profile_dir,
             self.config.browser_preference,
@@ -546,6 +562,34 @@ def resolve_ffmpeg_location() -> Path | None:
             return resolved
     except Exception:
         pass
+    return None
+
+
+def resolve_aria2c_location() -> Path | None:
+    env_candidates = [os.environ.get("ARIA2C")]
+    app_contents_dir = Path(sys.executable).resolve().parent.parent
+    candidate_paths = [
+        app_contents_dir / "Frameworks" / "bin" / "aria2c",
+        app_contents_dir / "Resources" / "bin" / "aria2c",
+        shutil.which("aria2c"),
+        Path.home() / ".local" / "bin" / "aria2c",
+        Path("/opt/homebrew/bin/aria2c"),
+        Path("/usr/local/bin/aria2c"),
+    ]
+
+    for candidate in [*env_candidates, *candidate_paths]:
+        resolved = _normalize_aria2c_candidate(candidate)
+        if resolved is not None:
+            return resolved
+    return None
+
+
+def _normalize_aria2c_candidate(value: str | Path | None) -> Path | None:
+    if not value:
+        return None
+    path = Path(value).expanduser()
+    if path.exists() and path.is_file() and os.access(path, os.X_OK):
+        return path.resolve()
     return None
 
 

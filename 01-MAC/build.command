@@ -33,6 +33,8 @@ fi
 
 export PYTHONPATH="$PWD/src"
 
+ARIA2C_PATH="$HOME/.local/bin/aria2c"
+
 pyinstaller_args=(
   --noconfirm
   --clean
@@ -46,6 +48,10 @@ pyinstaller_args=(
 
 if [[ -f "$ICON_ICNS" ]]; then
   pyinstaller_args=(--icon "$ICON_ICNS" "${pyinstaller_args[@]}")
+fi
+
+if [[ -x "$ARIA2C_PATH" ]]; then
+  pyinstaller_args=(--add-binary "$ARIA2C_PATH:bin" "${pyinstaller_args[@]}")
 fi
 
 "$VENV_DIR/bin/python" -m PyInstaller "${pyinstaller_args[@]}"
