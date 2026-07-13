@@ -35,6 +35,7 @@ ARIA2C_CONNECTIONS = 8
 PROGRESS_EMIT_INTERVAL_SECONDS = 0.25
 PROGRESS_EMIT_DELTA_PERCENT = 0.4
 PROGRESS_EMIT_DELTA_BYTES = 4 * 1024 * 1024
+ARIA2_PROGRESS_POLL_SECONDS = 0.5
 
 
 class YtDlpLogger:
@@ -50,6 +51,8 @@ class YtDlpLogger:
             self.log_callback(f"警告：{message}")
 
     def error(self, message: str) -> None:
+        if "Support for Python version 3.9 has been deprecated" in message:
+            return
         if self.log_callback:
             self.log_callback(f"错误：{message}")
 
@@ -234,17 +237,32 @@ class BiliDownloader:
             eta_text="",
         )
         progress_hook = self._build_progress_hook(item.task_id, stop_event, item_callback, download_state)
+        download_options = self._build_download_options(
+            output_dir=output_dir,
+            progress_hook=progress_hook,
+            temp_dir=task_temp_dir,
+            fragment_downloads=fragment_downloads,
+            cookie_spec=cookie_spec,
+        )
+        aria2_stop_event = threading.Event()
+        aria2_progress_thread: threading.Thread | None = None
+        if download_options.get("external_downloader"):
+            aria2_progress_thread = threading.Thread(
+                target=self._monitor_aria2_progress,
+                args=(
+                    item.task_id,
+                    task_temp_dir,
+                    stop_event,
+                    aria2_stop_event,
+                    item_callback,
+                    download_state,
+                ),
+                daemon=True,
+            )
+            aria2_progress_thread.start()
 
         try:
-            with YoutubeDL(
-                self._build_download_options(
-                    output_dir=output_dir,
-                    progress_hook=progress_hook,
-                    temp_dir=task_temp_dir,
-                    fragment_downloads=fragment_downloads,
-                    cookie_spec=cookie_spec,
-                )
-            ) as ydl:
+            with YoutubeDL(download_options) as ydl:
                 ydl.extract_info(item.normalized_url, download=True)
 
             total_downloaded = _get_completed_bytes(download_state)
@@ -343,7 +361,54 @@ class BiliDownloader:
                 eta_text="",
             )
             return "failed"
+        finally:
+            aria2_stop_event.set()
+            if aria2_progress_thread is not None:
+                aria2_progress_thread.join(timeout=2)
 
+    def _monitor_aria2_progress(
+        self,
+        task_id: str,
+        task_temp_dir: Path,
+        stop_event: threading.Event,
+        monitor_stop_event: threading.Event,
+        item_callback: Callable[[str, dict], None] | None,
+        download_state: dict[str, object],
+    ) -> None:
+        last_bytes = 0
+        last_at = time.monotonic()
+        last_emit_at = 0.0
+        total_estimated = _get_total_estimated(download_state)
+
+        while not monitor_stop_event.wait(ARIA2_PROGRESS_POLL_SECONDS):
+            if stop_event.is_set():
+                return
+
+            downloaded_bytes = _get_aria2_downloaded_bytes(task_temp_dir)
+            now = time.monotonic()
+            elapsed = max(now - last_at, 0.001)
+            speed_bps = max(0.0, (downloaded_bytes - last_bytes) / elapsed)
+            last_bytes = downloaded_bytes
+            last_at = now
+            if downloaded_bytes <= 0 or now - last_emit_at < PROGRESS_EMIT_INTERVAL_SECONDS:
+                continue
+
+            progress = min(99.0, downloaded_bytes / total_estimated * 100.0) if total_estimated else 0.0
+            remaining = max(0, total_estimated - downloaded_bytes)
+            eta_seconds = int(remaining / speed_bps) if speed_bps > 0 and total_estimated else None
+            self._emit_item(
+                item_callback,
+                task_id,
+                status="下载中",
+                progress=progress,
+                detail="aria2c 多连接直连下载",
+                downloaded_text=_format_progress_bytes(downloaded_bytes, total_estimated),
+                speed_text=_format_speed(speed_bps),
+                speed_bps=speed_bps,
+                eta_text=_format_eta(eta_seconds),
+                eta_seconds=eta_seconds,
+            )
+            last_emit_at = now
     def _build_progress_hook(
         self,
         task_id: str,
@@ -414,8 +479,6 @@ class BiliDownloader:
             "quiet": True,
             "no_warnings": True,
             "noplaylist": False,
-            # B 站下载直连，不继承桌面环境中的 HTTP(S)_PROXY / ALL_PROXY。
-            "proxy": "",
             "skip_download": True,
             "ignoreerrors": False,
             "socket_timeout": NETWORK_SOCKET_TIMEOUT_SECONDS,
@@ -441,8 +504,6 @@ class BiliDownloader:
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            # 直连 B 站，避免本机代理的带宽和分片重试成为下载瓶颈。
-            "proxy": "",
             "ignoreerrors": False,
             "logger": YtDlpLogger(self.log_callback),
             "format": FORMAT_SELECTOR,
@@ -679,6 +740,19 @@ def _extract_component_sizes(info: dict) -> dict[str, int]:
 
 def _pick_size(info: dict) -> int:
     return int(info.get("filesize") or info.get("filesize_approx") or 0)
+
+
+def _get_aria2_downloaded_bytes(task_temp_dir: Path) -> int:
+    total = 0
+    for path in task_temp_dir.glob("*.part"):
+        if path.name.endswith(".aria2"):
+            continue
+        try:
+            # APFS 上 aria2 的未写入区间可能是稀疏文件；已分配块数更接近真实下载量。
+            total += int(path.stat().st_blocks) * 512
+        except OSError:
+            continue
+    return total
 
 
 def _build_download_state(item: VideoMetadata) -> dict[str, object]:
